@@ -28,7 +28,7 @@ public class Alert {
     private BigDecimal price;
 
     @Enumerated(EnumType.STRING)
-    private AlertStatus status;
+    private AlertStatus status = AlertStatus.WAITING;
 
     @UpdateTimestamp
     private Instant lastNotification;

@@ -17,6 +17,6 @@ public class NotificationService {
 
     @KafkaListener(topics = {"market.cripto.updated", "market.tradfi.updated"}, groupId = "notification.service")
     public void updatePrices(List<String> payload){
-        System.out.println(payload);
+
     }
 }
