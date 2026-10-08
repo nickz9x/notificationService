@@ -11,6 +11,7 @@ spring:
     password: postgres
   flyway:
     enabled: true
+    repair-on-migrate: true
     locations: classpath:db/migration
     # false (padrão): se o banco já tiver tabelas sem histórico do Flyway,
     # o startup FALHA em vez de carimbar um baseline e pular as migrations.
@@ -27,6 +28,11 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8081/realms/ChainTracker
+
+  kafka:
+    listener:
+      type: batch
+
 server:
   port: 8086
 

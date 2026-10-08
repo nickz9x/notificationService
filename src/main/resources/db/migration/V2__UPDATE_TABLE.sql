@@ -1,0 +1,1 @@
+alter table alert add column price numeric(36,18) not null
