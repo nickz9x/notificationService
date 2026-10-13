@@ -27,6 +27,7 @@ public class AlertService {
     private final AlertRepository alertRepository;
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
+    private final NotificationService notificationService;
 
     private static final String ALERT_KEY_PREFIX = "alertas:";
 
@@ -109,7 +110,12 @@ public class AlertService {
 
             if (currentPrice.compareTo(alert.getPrice()) >= 0
                     && alert.getStatus() == AlertStatus.WAITING) {
-
+                long agora = Instant.now().getEpochSecond();
+                String conteudo = "# 🚨 ALERTA ATIVADO 🚨\n\n"
+                        + "> ### **" + alert.getAssetId().toUpperCase() + "** atingiu\n"
+                        + "> # 💲 `$" + alert.getPrice().setScale(2) + "`\n\n"
+                        + "-# 📊 Alerta de preço • <t:" + agora + ":R>";
+                notificationService.sendAlerts(conteudo);
                 log.info(
                         "TRIGGERED: usuario={}, ativo={}, precoAlvo={}, precoAtual={}",
                         alert.getUserId(),

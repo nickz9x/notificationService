@@ -32,7 +32,9 @@ spring:
   kafka:
     listener:
       type: batch
-
+notification:
+  discord:
+    webhook-url: "https://discord.com/api/webhooks/1559358783208038461/la3NZXhmK0zYa-VGRO4qqZz-aALZ5xQJj28TICL26gqhl3j_1DCKYmGlC8l1G1ZuR0Jn"
 server:
   port: 8086
 

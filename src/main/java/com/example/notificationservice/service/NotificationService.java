@@ -1,22 +1,34 @@
 package com.example.notificationservice.service;
 
-import com.example.notificationservice.dto.AlertTriggered;
-import lombok.AllArgsConstructor;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
-import java.util.List;
+import java.util.Map;
+
 
 @Service
-@AllArgsConstructor
 public class NotificationService {
-    private KafkaTemplate<String,Object> kafkaTemplate;
 
+    private final RestClient restClient;
+    private final String webhookUrl;
 
+    public NotificationService(
+            RestClient.Builder restClientBuilder,
+            @Value("${notification.discord.webhook-url}") String webhookUrl
+    ) {
+        this.restClient = restClientBuilder.build();
+        this.webhookUrl = webhookUrl;
+    }
 
-
-    public void checkAlerts(){
-        //a mensagem esta chegando, savlar no cache com zset, e mudanca de status
+    public void sendAlerts(String message) {
+        restClient.post()
+                .uri(webhookUrl)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("content", message))
+                .retrieve()
+                .toBodilessEntity();
     }
 }
