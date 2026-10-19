@@ -114,6 +114,7 @@ public class AlertService {
                 String conteudo = "# 🚨 ALERTA ATIVADO 🚨\n\n"
                         + "> ### **" + alert.getAssetId().toUpperCase() + "** atingiu\n"
                         + "> # 💲 `$" + alert.getPrice().setScale(2) + "`\n\n"
+                        +"> # Preço Atual💲 `$" + currentPrice + "`\n\n"
                         + "-# 📊 Alerta de preço • <t:" + agora + ":R>";
                 notificationService.sendAlerts(conteudo);
                 log.info(
