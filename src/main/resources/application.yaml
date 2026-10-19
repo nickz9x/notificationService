@@ -4,7 +4,7 @@ spring:
     name: notificationService
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
   datasource:
     username: user
     url: jdbc:postgresql://localhost:5435/notificationService
@@ -33,7 +33,11 @@ spring:
     listener:
       type: batch
 notification:
+  telegram:
+    bot-name: "ChainTrackerPortfolioBot"
+    key: "8840059951:AAHgx7NKR-gKOfNKuQZ4hM93wZZy945ikGc"
   discord:
+    token: "MTU1OTM1ODU5NjMyNjYyMTI1NA.GbP6Zg.2GNHBCishZDjh66G4CYthrShIjDoryux74TYKk"
     webhook-url: "https://discord.com/api/webhooks/1559358783208038461/la3NZXhmK0zYa-VGRO4qqZz-aALZ5xQJj28TICL26gqhl3j_1DCKYmGlC8l1G1ZuR0Jn"
 server:
   port: 8086
