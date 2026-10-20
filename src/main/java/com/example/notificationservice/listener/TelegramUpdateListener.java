@@ -2,19 +2,23 @@ package com.example.notificationservice.listener;
 
 import com.example.notificationservice.domain.LinkedUser;
 import com.example.notificationservice.dto.PortfolioResponseDto;
+import com.example.notificationservice.dto.PositionResponseDto;
 import com.example.notificationservice.dto.TelegramLinkDto;
 import com.example.notificationservice.service.IdentityService;
 import com.example.notificationservice.service.PortfolioService;
+import com.example.notificationservice.service.PositionService;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.UpdatesListener;
 import com.pengrad.telegrambot.model.Update;
+import com.pengrad.telegrambot.model.request.InlineKeyboardButton;
+import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup;
+import com.pengrad.telegrambot.model.request.ParseMode;
 import com.pengrad.telegrambot.request.SendMessage;
 import jakarta.annotation.PostConstruct;
-import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -25,20 +29,33 @@ public class TelegramUpdateListener {
     private final TelegramBot bot;
     private final IdentityService identityService;
     private final PortfolioService portfolioService;
+    private final PositionService positionService;
+
     @PostConstruct
     public void start() {
         bot.setUpdatesListener(updates -> {
             for (Update update : updates) {
-                if (update.message() == null
-                        || update.message().text() == null) {
+
+                // 1. TRATA CLIQUE NOS BOTÕES (Callback Query)
+                if (update.callbackQuery() != null) {
+                    Long chatId = update.callbackQuery().message().chat().id();
+                    String callbackData = update.callbackQuery().data();
+
+                    if (callbackData.startsWith("portfolio_id_")) {
+                        String portfolioId = callbackData.replace("portfolio_id_", "");
+                        executarAcaoDoPortfolio(chatId, portfolioId);
+                    }
+                    continue; // Pula para o próximo update
+                }
+
+                // 2. TRATA MENSAGENS DE TEXTO NORMAS
+                if (update.message() == null || update.message().text() == null) {
                     continue;
                 }
 
                 Long chatId = update.message().chat().id();
                 String text = update.message().text().trim();
 
-                // Divide a mensagem em até 2 partes: [comando, argumento]
-                // Ex: "/vincular 123456" vira parts[0] = "/vincular" e parts[1] = "123456"
                 String[] parts = text.split("\\s+", 2);
                 String command = parts[0];
 
@@ -55,12 +72,10 @@ public class TelegramUpdateListener {
                             send(chatId, "testado as " + Instant.now() + " por " + chatId);
 
                     case "/vincular" -> {
-                        // Verifica se o usuário enviou o código junto (ex: /vincular 123456)
                         if (parts.length > 1 && !parts[1].isBlank()) {
                             String codigo = parts[1].trim();
 
-                            // Chama o seu serviço para validar o código e salvar o chatId
-                            boolean sucesso = identityService.linkUser(new TelegramLinkDto(codigo,chatId));
+                            boolean sucesso = identityService.linkUser(new TelegramLinkDto(codigo, chatId));
 
                             if (sucesso) {
                                 send(chatId, "Conta vinculada com sucesso! 🎉 Agora você receberá notificações aqui.");
@@ -68,38 +83,44 @@ public class TelegramUpdateListener {
                                 send(chatId, "❌ Código inválido ou expirado. Gere um novo código no site.");
                             }
                         } else {
-                            // Se mandou apenas /vincular sem o código
                             send(chatId, "⚠️ Por favor, informe o código gerado no site.\nExemplo: `/vincular 123456`");
                         }
                     }
 
                     case "/portfolio", "/portfolios" -> {
                         try {
-                            // 1. Pega o UUID do usuário através do chatId do Telegram
                             UUID userByChatId = identityService.getUserByChatId(chatId).getUserId();
 
-                            // 2. Busca a lista de portfólios do usuário
                             List<PortfolioResponseDto> portfolios = portfolioService.getUserPortfolio(userByChatId.toString());
 
-                            // 3. Valida se a lista está vazia
                             if (portfolios == null || portfolios.isEmpty()) {
                                 send(chatId, "📁 Você ainda não possui nenhum portfólio cadastrado.");
                                 break;
                             }
 
-                            // 4. Monta a mensagem formatada
                             StringBuilder mensagem = new StringBuilder("📁 *Seus Portfólios:*\n\n");
 
+                            // Criação do teclado inline usando a API do Pengrad
+                            InlineKeyboardMarkup teclado = new InlineKeyboardMarkup();
+
                             for (PortfolioResponseDto p : portfolios) {
-                                mensagem.append("🔹 *Nome:* ").append(p.name()).append("\n");
-                                mensagem.append("🆔 *ID:* `").append(p.id()).append("`\n"); // Usar crase deixa o ID copiável no Telegram
-                                mensagem.append("----------------------------------\n");
+                                mensagem.append("💼 *").append(p.name().toUpperCase()).append("*\n");
+                                mensagem.append("└───────────────────\n\n");
+
+                                // Cria o botão e o adiciona como uma nova linha no teclado
+                                InlineKeyboardButton botao = new InlineKeyboardButton("✨ Acessar " + p.name())
+                                        .callbackData("portfolio_id_" + p.id());
+
+                                teclado.addRow(botao);
                             }
 
-                            send(chatId, mensagem.toString());
+                            mensagem.append("👇 _Clique em um dos botões abaixo para gerenciar:_");
+
+                            // Envia a mensagem de texto com os botões anexados
+                            sendWithKeyboard(chatId, mensagem.toString(), teclado);
 
                         } catch (Exception e) {
-                            // Trata caso o usuário não esteja vinculado ou ocorra algum erro na API
+                            System.out.println(e.getMessage());
                             send(chatId, "❌ Não foi possível carregar seus portfólios. Certifique-se de que sua conta está vinculada usando `/vincular <codigo>`.");
                         }
                     }
@@ -113,8 +134,63 @@ public class TelegramUpdateListener {
         });
     }
 
-    private void send(Long chatId, String text) {
-        bot.execute(new SendMessage(chatId, text));
+    /**
+     * Ação executada imediatamente após o usuário clicar no botão do Portfólio
+     */
+    private void executarAcaoDoPortfolio(Long chatId, String portfolioId) {
+        try {
+            StringBuilder resposta = new StringBuilder();
+            LinkedUser userByChatId = identityService.getUserByChatId(chatId);
+            List<PositionResponseDto> positions = positionService.getUserPositions(portfolioId, userByChatId.getUserId().toString());
+
+            if (positions.isEmpty()) {
+                resposta.append("📭 *Nenhuma posição encontrada para este portfólio\\.*");
+            } else {
+                resposta.append("📊 *Suas Posições Atuais* 📊\n\n");
+
+                for (PositionResponseDto userPosition : positions) {
+                    // Define o emoji com base no PnL (Lucro/Prejuízo)
+                    boolean isProfit = userPosition.pnlAmount() != null && userPosition.pnlAmount().compareTo(BigDecimal.ZERO) >= 0;
+                    String pnlEmoji = isProfit ? "🟢" : "🔴";
+                    String pnlSign = isProfit ? "+" : ""; //
+
+                    resposta.append(String.format(
+                            "🪙 %s - %s\n" +
+                                    " ├ 📦 Qtd: %s\n" +
+                                    " ├ 💵 Preço Médio: $ %s\n" +
+                                    " ├ 💰 Valor Atual: $ %s\n" +
+                                    " └ %s PnL: %s%s (%s%s%%)\n\n",
+                            userPosition.symbol(),
+                            userPosition.name(),
+                            userPosition.quantity(),
+                            userPosition.averagePrice(),
+                            userPosition.positionValue(),
+                            pnlEmoji,
+                            pnlSign, userPosition.pnlAmount(),
+                            pnlSign, userPosition.pnlPercentage()
+                    ));
+                }
+            }
+
+            send(chatId, resposta.toString());
+        } catch (Exception e) {
+            send(chatId, "❌ Erro ao processar a ação do portfólio.");
+        }
     }
 
+    /**
+     * Envio padrão de texto (com suporte a Markdown)
+     */
+    private void send(Long chatId, String text) {
+        bot.execute(new SendMessage(chatId, text).parseMode(ParseMode.Markdown));
+    }
+
+    /**
+     * Envio especializado contendo os botões Inline abaixo da mensagem
+     */
+    private void sendWithKeyboard(Long chatId, String text, InlineKeyboardMarkup teclado) {
+        bot.execute(new SendMessage(chatId, text)
+                .parseMode(ParseMode.Markdown)
+                .replyMarkup(teclado));
+    }
 }
