@@ -93,12 +93,6 @@ public class AlertService {
             return;
         }
 
-        log.info(
-                "ALERTAS ENCONTRADOS: ativo={}, precoAtual={}, quantidade={}",
-                assetId,
-                currentPrice,
-                alertIds.size()
-        );
 
         List<UUID> ids = alertIds.stream()
                 .map(UUID::fromString)
