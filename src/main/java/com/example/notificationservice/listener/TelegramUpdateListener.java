@@ -307,7 +307,7 @@ public class TelegramUpdateListener {
                         .append("$ ").append(portfolioResume.portfolioValue())
                         .append("\n\n")
                         .append("📈 *Resultado da carteira:*\n")
-                        .append(emoji).append(" R$ ")
+                        .append(emoji).append(" $ ")
                         .append(portfolioResume.portfolioPnlValue())
                         .append(" (")
                         .append(portfolioResume.portfolioPnlPercentage())
@@ -331,7 +331,7 @@ public class TelegramUpdateListener {
                                     " ├ 📦 Qtd: %s\n" +
                                     " ├ 💵 Preço Médio: $ %s\n" +
                                     " ├ 💰 Valor Atual: $ %s\n" +
-                                    " └ %s PnL: %s%s (%s%s%%)\n\n",
+                                    " └ %s PnL: $%s%s (%s%s%%)\n\n",
                             userPosition.symbol(),
                             userPosition.name(),
                             userPosition.quantity(),
