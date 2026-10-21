@@ -9,6 +9,7 @@ import com.example.notificationservice.dto.PositionTotalResume;
 import com.example.notificationservice.dto.SellPositionRequestDto;
 import com.example.notificationservice.enums.PositionType;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.security.oauth2.client.web.client.OAuth2ClientHttpRequestInterceptor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -21,10 +22,10 @@ public class PortfolioClient {
     private final RestClient restClient;
     private String url = "http://localhost:8087/api";
 
-    public PortfolioClient(RestClient.Builder restClientBuilder, JwtForwardingInterceptor jwtForwardingInterceptor) {
+    public PortfolioClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder
                 .baseUrl(url)
-                .requestInterceptor(jwtForwardingInterceptor)
+                .requestInterceptor(interceptor)
                 .build();
     }
 

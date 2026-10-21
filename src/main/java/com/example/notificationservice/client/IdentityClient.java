@@ -1,6 +1,7 @@
 package com.example.notificationservice.client;
 
 import com.example.notificationservice.dto.TelegramLinkDto;
+import org.springframework.security.oauth2.client.web.client.OAuth2ClientHttpRequestInterceptor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -9,10 +10,10 @@ public class IdentityClient {
     private final RestClient restClient;
     private String url = "http://localhost:8080/api";
 
-    public IdentityClient(RestClient.Builder restClientBuilder, JwtForwardingInterceptor jwtForwardingInterceptor) {
+    public IdentityClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder
                 .baseUrl(url)
-                .requestInterceptor(jwtForwardingInterceptor)
+                .requestInterceptor(interceptor)
                 .build();
     }
 

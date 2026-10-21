@@ -2,6 +2,7 @@ package com.example.notificationservice.client;
 
 import com.example.notificationservice.dto.CreateAlertRequestDto;
 import com.example.notificationservice.enums.PositionType;
+import org.springframework.security.oauth2.client.web.client.OAuth2ClientHttpRequestInterceptor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -13,10 +14,10 @@ public class AlertClient {
     private final RestClient restClient;
     private String url = "http://localhost:8087/api";
 
-    public AlertClient(RestClient.Builder restClientBuilder, JwtForwardingInterceptor jwtForwardingInterceptor) {
+    public AlertClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder
                 .baseUrl(url)
-                .requestInterceptor(jwtForwardingInterceptor)
+                .requestInterceptor(interceptor)
                 .build();
     }
 
