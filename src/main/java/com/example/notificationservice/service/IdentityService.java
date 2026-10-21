@@ -44,4 +44,16 @@ public class IdentityService {
     public LinkedUser getUserByChatId(Long chatId){
         return linkedUserRepository.findByChatId(chatId).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST));
     }
+
+    /**
+     * Indica se este chat do Telegram ja foi vinculado a uma conta. A tabela
+     * local e alimentada pelo evento do identity-service (topico linked.users).
+     */
+    public boolean isChatLinked(Long chatId) {
+        return linkedUserRepository.findByChatId(chatId).isPresent();
+    }
+
+    public LinkedUser findByUserId(String userId){
+        return linkedUserRepository.findByUserId(UUID.fromString(userId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
 }

@@ -21,7 +21,7 @@ public class IdentityClient {
         try {
             Boolean success = restClient.post()
                     .uri(uriBuilder -> uriBuilder
-                            .path("/auth/link")
+                            .path("/bot/auth/link")
                             .build()
                     )
                     .body(dto)
