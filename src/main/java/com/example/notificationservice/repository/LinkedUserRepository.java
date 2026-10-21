@@ -9,4 +9,5 @@ import java.util.UUID;
 
 public interface LinkedUserRepository extends JpaRepository<LinkedUser, UUID> {
     Optional<LinkedUser> findByChatId(Long chatId);
+    Optional<LinkedUser> findByUserId(UUID userId);
 }
