@@ -7,7 +7,7 @@ spring:
       ddl-auto: validate
   datasource:
     username: user
-    url: jdbc:postgresql://notification-service-db:5435/notificationService
+    url: jdbc:postgresql://notification-service-db:5432/notificationService
     password: postgres
   flyway:
     enabled: true
@@ -27,7 +27,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://keycloak:8081/realms/ChainTracker
+          issuer-uri: http://keycloak:8080/realms/ChainTracker
       client:
         registration:
           notification-service:
@@ -39,7 +39,7 @@ spring:
               - bot
         provider:
           keycloak:
-            token-uri: http://keycloak:8081/realms/ChainTracker/protocol/openid-connect/token
+            token-uri: http://keycloak:8080/realms/ChainTracker/protocol/openid-connect/token
 
   kafka:
     listener:
