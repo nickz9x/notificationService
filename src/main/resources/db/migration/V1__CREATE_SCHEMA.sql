@@ -1,14 +1,23 @@
-CREATE SEQUENCE IF NOT EXISTS revinfo_seq START WITH 1 INCREMENT BY 50;
-
 CREATE TABLE alert
 (
     id                UUID NOT NULL,
     user_id           UUID,
     asset_id          VARCHAR(255),
+    price             NUMERIC(36, 18) NOT NULL,
     status            VARCHAR(255),
     last_notification TIMESTAMP(6) WITHOUT TIME ZONE,
     CONSTRAINT pk_alert PRIMARY KEY (id)
 );
+
+CREATE TABLE linked_user
+(
+    id      UUID NOT NULL,
+    user_id UUID,
+    chat_id BIGINT,
+    CONSTRAINT pk_linked_user PRIMARY KEY (id)
+);
+
+CREATE SEQUENCE IF NOT EXISTS revinfo_seq START WITH 1 INCREMENT BY 50;
 
 CREATE TABLE revchanges
 (

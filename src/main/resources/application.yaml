@@ -4,13 +4,13 @@ spring:
     name: notificationService
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
   datasource:
     username: user
     url: jdbc:postgresql://notification-service-db:5435/notificationService
     password: postgres
   flyway:
-    enabled: false
+    enabled: true
     repair-on-migrate: true
     locations: classpath:db/migration
     # false (padrão): se o banco já tiver tabelas sem histórico do Flyway,
