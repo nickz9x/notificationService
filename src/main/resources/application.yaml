@@ -7,7 +7,7 @@ spring:
       ddl-auto: update
   datasource:
     username: user
-    url: jdbc:postgresql://localhost:5435/notificationService
+    url: jdbc:postgresql://notification-service-db:5435/notificationService
     password: postgres
   flyway:
     enabled: false
@@ -20,26 +20,26 @@ spring:
   data:
     redis:
       password: admin
-      host: localhost
+      host: my-redis
       port: 6379
       type: redis
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8081/realms/ChainTracker
+          issuer-uri: http://keycloak:8081/realms/ChainTracker
       client:
         registration:
           notification-service:
             provider: keycloak
             client-id: notification-client
-            client-secret: "ZtLcll0k4OS1Ff0yK9uMLU2U0XvVgw7Yg8OCBfmozgElmrqRNMBjZPWZVmuootmEq2dPj4n7KMa3Yx2409X8KF"
+            client-secret: ${NOTIFICATION_CLIENT_SECRET}
             authorization-grant-type: client_credentials
             scope:
               - bot
         provider:
           keycloak:
-            token-uri: http://localhost:8081/realms/ChainTracker/protocol/openid-connect/token
+            token-uri: http://keycloak:8081/realms/ChainTracker/protocol/openid-connect/token
 
   kafka:
     listener:
@@ -47,10 +47,10 @@ spring:
 notification:
   telegram:
     bot-name: "ChainTrackerPortfolioBot"
-    key: "8840059951:AAHgx7NKR-gKOfNKuQZ4hM93wZZy945ikGc"
+    key: ${TELEGRAM_KEY}
   discord:
-    token: "MTU1OTM1ODU5NjMyNjYyMTI1NA.GbP6Zg.2GNHBCishZDjh66G4CYthrShIjDoryux74TYKk"
-    webhook-url: "https://discord.com/api/webhooks/1559358783208038461/la3NZXhmK0zYa-VGRO4qqZz-aALZ5xQJj28TICL26gqhl3j_1DCKYmGlC8l1G1ZuR0Jn"
+    token: ${DISCORD_TOKEN}
+    webhook-url: ${DISCORD_WEBHOOK_URL}
 server:
   port: 8086
 

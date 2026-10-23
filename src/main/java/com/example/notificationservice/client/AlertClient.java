@@ -12,7 +12,7 @@ import java.util.Map;
 @Component
 public class AlertClient {
     private final RestClient restClient;
-    private String url = "http://localhost:8087/api";
+    private String url = "http://portfolio-service:3003/api";
 
     public AlertClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder

@@ -8,7 +8,7 @@ import org.springframework.web.client.RestClient;
 @Component
 public class IdentityClient {
     private final RestClient restClient;
-    private String url = "http://localhost:8080/api";
+    private String url = "http://identity-service:3002/api";
 
     public IdentityClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder
