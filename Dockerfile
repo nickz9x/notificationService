@@ -10,7 +10,7 @@ COPY .mvn/ .mvn/
 
 RUN chmod +x mvnw
 
-COPY /src /src
+COPY src/ src/
 
 RUN ./mvnw clean package -DskipTests
 
@@ -20,6 +20,6 @@ WORKDIR /app
 
 COPY --from=build /app/target/*.jar app.jar
 
-EXPOSE 3005
+EXPOSE 8086
 
 ENTRYPOINT ["java", "-jar","app.jar","-XX:MaxRAMPercentage=75.0"]

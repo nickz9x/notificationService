@@ -5,7 +5,9 @@ import com.example.notificationservice.dto.PortfolioResponseDto;
 import com.example.notificationservice.dto.PositionResponseDto;
 import com.example.notificationservice.dto.PositionTotalResume;
 import com.example.notificationservice.dto.TelegramLinkDto;
+import com.example.notificationservice.dto.TelegramRegisterDto;
 import com.example.notificationservice.enums.PositionType;
+import com.example.notificationservice.enums.RegistrationStatus;
 import com.example.notificationservice.service.AlertService;
 import com.example.notificationservice.service.IdentityService;
 import com.example.notificationservice.service.PortfolioService;
@@ -46,7 +48,7 @@ public class TelegramUpdateListener {
     private final Map<Long, Conversa> conversas = new ConcurrentHashMap<>();
 
     private enum Acao {
-        ADICIONAR, DIMINUIR, REMOVER, CRIAR_PORTFOLIO, CRIAR_ALERTA
+        ADICIONAR, DIMINUIR, REMOVER, CRIAR_PORTFOLIO, CRIAR_ALERTA, CRIAR_CONTA
     }
 
     private enum Etapa {
@@ -60,7 +62,10 @@ public class TelegramUpdateListener {
         INFORMAR_NOME_PORTFOLIO,
         ALERTA_ESCOLHA_TIPO,
         ALERTA_INFORMAR_ATIVO,
-        ALERTA_INFORMAR_PRECO
+        ALERTA_INFORMAR_PRECO,
+        CONTA_INFORMAR_USERNAME,
+        CONTA_INFORMAR_EMAIL,
+        CONTA_INFORMAR_SENHA
     }
 
     private static final class Conversa {
@@ -72,6 +77,8 @@ public class TelegramUpdateListener {
         private BigDecimal quantidade;
         private List<PositionResponseDto> posicoes;
         private PositionResponseDto selecionada;
+        private String username;
+        private String email;
 
         private Conversa(String portfolioId, Acao acao, Etapa etapa) {
             this.portfolioId = portfolioId;
@@ -115,6 +122,7 @@ public class TelegramUpdateListener {
                     new BotCommand("start", "Inicia o bot"),
                     new BotCommand("help", "Lista os comandos disponíveis"),
                     new BotCommand("vincular", "Vincula sua conta com o código gerado no site"),
+                    new BotCommand("criarconta", "Cria uma conta pelo Telegram"),
                     new BotCommand("portfolio", "Consulta seus portfolios"),
                     new BotCommand("newportfolio", "Cria um novo portfolio"),
                     new BotCommand("alerta", "Cria um alerta de preço"),
@@ -196,11 +204,13 @@ public class TelegramUpdateListener {
 
         switch (command) {
             case "/start" ->
-                    send(chatId, "Chain Tracker está online! 🟢");
+                    send(chatId, "Chain Tracker está online! 🟢\n\n"
+                            + "Use /criarconta para criar uma conta ou /vincular <codigo> para vincular uma conta existente.");
 
             case "/help" ->
-                    send(chatId, "/vincular <codigo> - Vincular sua conta\n"
-                            + "/portfolios - Consultar portfolios\n"
+                    send(chatId, "/criarconta - Criar uma conta pelo Telegram\n"
+                            + "/vincular <codigo> - Vincular sua conta\n"
+                            + "/portfolio - Consultar portfolios\n"
                             + "/newportfolio - Criar portfolio\n"
                             + "/alerta - Criar alerta de preço\n"
                             + "/cancelar - Cancelar a operação em andamento");
@@ -219,7 +229,6 @@ public class TelegramUpdateListener {
             case "/vincular" -> {
                 if (identityService.isChatLinked(chatId)) {
                     // Cada chat so pode apontar para uma conta. Sem esta checagem
-                    // o 409 do identity-service virava "codigo invalido".
                     send(chatId, "❌ Este chat já está vinculado a uma conta. "
                             + "Cada chat do Telegram pode ser vinculado a apenas uma conta.");
                 } else if (parts.length > 1 && !parts[1].isBlank()) {
@@ -236,6 +245,8 @@ public class TelegramUpdateListener {
                     send(chatId, "⚠️ Por favor, informe o código gerado no site.\nExemplo: `/vincular 123456`");
                 }
             }
+
+            case "/criarconta" -> iniciarCriacaoConta(chatId);
 
             case "/portfolio", "/portfolios" -> listarPortfolios(chatId);
 
@@ -281,7 +292,7 @@ public class TelegramUpdateListener {
 
         } catch (Exception e) {
             System.out.println(e.getMessage());
-            send(chatId, "❌ Não foi possível carregar seus portfólios. Certifique-se de que sua conta está vinculada usando `/vincular <codigo>`.");
+            send(chatId, "❌ Não foi possível carregar seus portfólios. Crie uma conta com `/criarconta` ou vincule uma existente com `/vincular <codigo>`.");
         }
     }
 
@@ -435,7 +446,7 @@ public class TelegramUpdateListener {
      */
     private void iniciarCriacaoAlerta(Long chatId, String portfolioId) {
         if (!identityService.isChatLinked(chatId)) {
-            send(chatId, "❌ Vincule sua conta primeiro com `/vincular <codigo>`.");
+            send(chatId, "❌ Crie uma conta com `/criarconta` ou vincule uma existente com `/vincular <codigo>`.");
             return;
         }
 
@@ -500,6 +511,100 @@ public class TelegramUpdateListener {
             System.out.println("Erro ao criar alerta pelo bot: " + e.getMessage());
             conversas.remove(chatId);
             send(chatId, "❌ Não foi possível criar o alerta. Verifique o ativo e tente novamente.");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Fluxo de criar conta pelo Telegram
+    // ------------------------------------------------------------------
+
+    private void iniciarCriacaoConta(Long chatId) {
+        if (identityService.isChatLinked(chatId)) {
+            send(chatId, "❌ Este chat já está vinculado a uma conta.");
+            return;
+        }
+
+        conversas.put(chatId, new Conversa(null, Acao.CRIAR_CONTA, Etapa.CONTA_INFORMAR_USERNAME));
+        send(chatId, "🆕 *Criar conta pelo Telegram*\n\n"
+                + "Envie um nome de usuário com 3 a 30 caracteres.\n"
+                + "Pode usar letras, números, ponto, hífen ou sublinhado.\n\n"
+                + "Para desistir, use /cancelar.");
+    }
+
+    private void tratarUsernameConta(Long chatId, Conversa conversa, String text) {
+        if (conversa.acao != Acao.CRIAR_CONTA) {
+            return;
+        }
+
+        String username = text.trim();
+
+        if (!username.matches("[A-Za-z0-9._-]{3,30}")) {
+            send(chatId, "⚠️ Nome de usuário inválido. Use de 3 a 30 caracteres: letras, números, ponto, hífen ou sublinhado.");
+            return;
+        }
+
+        conversa.username = username;
+        conversa.etapa = Etapa.CONTA_INFORMAR_EMAIL;
+        send(chatId, "Agora envie seu e-mail.");
+    }
+
+    private void tratarEmailConta(Long chatId, Conversa conversa, String text) {
+        if (conversa.acao != Acao.CRIAR_CONTA) {
+            return;
+        }
+
+        String email = text.trim();
+
+        if (email.length() > 254 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            send(chatId, "⚠️ E-mail inválido. Envie novamente.");
+            return;
+        }
+
+        conversa.email = email;
+        conversa.etapa = Etapa.CONTA_INFORMAR_SENHA;
+        send(chatId, "🔐 Agora envie uma senha com pelo menos 8 caracteres.\n"
+                + "A senha não pode começar com /.\n\n"
+                + "⚠️ Ela ficará no histórico desta conversa; apague a mensagem depois.\n"
+                + "Para desistir, use /cancelar.");
+    }
+
+    private void tratarSenhaConta(Long chatId, Conversa conversa, String text) {
+        if (conversa.acao != Acao.CRIAR_CONTA) {
+            return;
+        }
+
+        if (text.length() < 8 || text.length() > 128) {
+            send(chatId, "⚠️ A senha precisa ter entre 8 e 128 caracteres. Envie novamente.");
+            return;
+        }
+
+        RegistrationStatus status = identityService.registerUser(
+                new TelegramRegisterDto(conversa.username, conversa.email, text, chatId));
+
+        switch (status) {
+            case SUCCESS -> {
+                conversas.remove(chatId);
+                send(chatId, "✅ *Conta criada e vinculada!*\n\n"
+                        + "Use o usuário e a senha que você definiu para entrar no site.\n\n"
+                        + "Agora você pode usar /portfolio, /newportfolio e /alerta.");
+            }
+            case CONFLICT -> {
+                conversa.username = null;
+                conversa.email = null;
+                conversa.etapa = Etapa.CONTA_INFORMAR_USERNAME;
+                send(chatId, "⚠️ Este nome de usuário, e-mail ou chat já está em uso.\n"
+                        + "Envie outro nome de usuário.");
+            }
+            case INVALID -> {
+                conversa.username = null;
+                conversa.email = null;
+                conversa.etapa = Etapa.CONTA_INFORMAR_USERNAME;
+                send(chatId, "⚠️ Os dados foram recusados. Confira as informações e envie o nome de usuário novamente.");
+            }
+            case ERROR -> {
+                conversas.remove(chatId);
+                send(chatId, "❌ Não foi possível criar a conta agora. Tente novamente em instantes.");
+            }
         }
     }
 
@@ -639,6 +744,9 @@ public class TelegramUpdateListener {
             case INFORMAR_NOME_PORTFOLIO -> criarPortfolio(chatId, text);
             case ALERTA_INFORMAR_ATIVO -> tratarAtivoAlerta(chatId, conversa, text);
             case ALERTA_INFORMAR_PRECO -> tratarPrecoAlerta(chatId, conversa, text);
+            case CONTA_INFORMAR_USERNAME -> tratarUsernameConta(chatId, conversa, text);
+            case CONTA_INFORMAR_EMAIL -> tratarEmailConta(chatId, conversa, text);
+            case CONTA_INFORMAR_SENHA -> tratarSenhaConta(chatId, conversa, text);
             default -> send(chatId, "Use os botões acima para continuar ou /cancelar para sair.");
         }
     }
@@ -791,9 +899,6 @@ public class TelegramUpdateListener {
         bot.execute(new SendMessage(chatId, text).parseMode(ParseMode.Markdown));
     }
 
-    /**
-     * Envio especializado contendo os botões Inline abaixo da mensagem
-     */
     private void sendWithKeyboard(Long chatId, String text, InlineKeyboardMarkup teclado) {
         bot.execute(new SendMessage(chatId, text)
                 .parseMode(ParseMode.Markdown)

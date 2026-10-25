@@ -4,6 +4,8 @@ import com.example.notificationservice.client.IdentityClient;
 import com.example.notificationservice.domain.LinkedUser;
 import com.example.notificationservice.dto.LinkedUserResponseDto;
 import com.example.notificationservice.dto.TelegramLinkDto;
+import com.example.notificationservice.dto.TelegramRegisterDto;
+import com.example.notificationservice.enums.RegistrationStatus;
 import com.example.notificationservice.repository.LinkedUserRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,12 +26,11 @@ public class IdentityService {
 
 
     public boolean linkUser(TelegramLinkDto dto){
-        try {
-            identityClient.linkAccount(dto);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+        return identityClient.linkAccount(dto);
+    }
+
+    public RegistrationStatus registerUser(TelegramRegisterDto dto){
+        return identityClient.registerAccount(dto);
     }
 
     @KafkaListener(topics = "linked.users", groupId = "notificationService", batch = "false")

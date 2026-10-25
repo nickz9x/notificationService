@@ -12,7 +12,7 @@ import java.util.Map;
 @Component
 public class AlertClient {
     private final RestClient restClient;
-    private String url = "http://portfolio-service:3003/api";
+    private String url = "http://gateway:3006/api";
 
     public AlertClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder
@@ -21,10 +21,6 @@ public class AlertClient {
                 .build();
     }
 
-    /**
-     * Usa a copia publica da criacao de alerta (/api/bot/alert). O userId vai
-     * por query param porque nao ha JWT no fluxo do Telegram.
-     */
     public void createAlert(String userId, PositionType type, String assetId, BigDecimal price) {
         restClient.post()
                 .uri(uriBuilder -> uriBuilder

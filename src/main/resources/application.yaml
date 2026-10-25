@@ -44,6 +44,8 @@ spring:
   kafka:
     listener:
       type: batch
+    bootstrap-servers:
+      - kafka:9092
 notification:
   telegram:
     bot-name: "ChainTrackerPortfolioBot"

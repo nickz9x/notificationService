@@ -20,7 +20,7 @@ import java.util.Map;
 @Component
 public class PortfolioClient {
     private final RestClient restClient;
-    private String url = "http://portfolio-service:3004/api";
+    private String url = "http://gateway:3006/api";
 
     public PortfolioClient(RestClient.Builder restClientBuilder, OAuth2ClientHttpRequestInterceptor interceptor) {
         this.restClient = restClientBuilder
