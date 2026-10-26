@@ -19,6 +19,7 @@ public record PositionResponseDto(
 
     public PositionResponseDto {
 
+        symbol = symbol == null ? null : symbol.toUpperCase();
         quantity = formatQuantity(quantity);
         averagePrice = formatPrice(averagePrice);
 

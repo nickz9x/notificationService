@@ -71,6 +71,7 @@ flowchart LR
 | Destino | Uso |
 |---|---|
 | `http://gateway:3006/api` | rotas do bot no `identity-service` e no `portfolioService` |
+| `http://assetmarketdata-service:8082/api` | catálogo e cotações de cripto e TradFi usados pelo bot |
 | API do Telegram | receber updates e enviar mensagens |
 | Webhook do Discord | publicar alertas |
 | Gateway do Discord (JDA) | bot do Discord |
@@ -170,6 +171,7 @@ O bot é registrado no `@PostConstruct` com `SetMyCommands` e processa os update
 | `/portfolio` ou `/portfolios` | lista os portfólios do usuário |
 | `/newportfolio` | cria um portfólio |
 | `/alerta` | cria um alerta de preço |
+| `/buscar` | pesquisa ativos de cripto e TradFi e mostra todos os dados disponíveis |
 | `/cancelar` | cancela a operação em andamento |
 | `/teste` | responde com data/hora e chat ID para verificar se o bot está ativo |
 
@@ -202,7 +204,9 @@ Comandos desconhecidos recebem “Comando não reconhecido.”.
 - patrimônio total;
 - resultado da carteira em valor e percentual;
 - melhor e pior desempenho;
-- cada posição com símbolo, nome, quantidade, preço médio, valor atual e PnL.
+- cada posição com símbolo, nome, quantidade, preço médio, preço atual da moeda, valor atual da posição e PnL.
+
+O preço atual é consultado no `assetMarketDataService` para cada posição (cripto ou TradFi). Se a cotação não estiver disponível, o campo aparece como `—`.
 
 O teclado do portfólio oferece:
 
@@ -213,7 +217,18 @@ O teclado do portfólio oferece:
 | 🗑️ Remover | vende a posição inteira, após confirmação |
 | 🔄 Atualizar | recarrega posições e resumo |
 | 🔔 Criar alerta | cria um alerta já associado ao portfólio |
+| 🔎 Buscar ativo | pesquisa cripto ou TradFi e mostra todos os dados do ativo |
 | 🗑️ Excluir portfólio | exclui o portfólio após confirmação |
+
+#### Buscar ativo
+
+1. `/buscar` (ou o botão **🔎 Buscar ativo** dentro do portfólio) pede o nome, o símbolo ou o id do ativo.
+2. O bot chama `GET /api/bot/assets/search?q=<termo>` no `assetMarketDataService` e lista até 10 criptos e 10 ações.
+3. Ao escolher um resultado, o bot consulta a cotação individual:
+   - cripto: `GET /api/bot/currency/{id}`;
+   - TradFi: `GET /api/bot/stock/{symbol}`.
+4. A resposta reúne tipo, id, símbolo, nome, bolsa e status do catálogo, além de preço atual, market cap, ranking e variação de 24h para cripto, ou abertura, máxima e mínima para ação.
+5. Símbolos são sempre exibidos em maiúsculas, tanto na busca quanto nas posições e alertas.
 
 #### Adicionar posição
 
@@ -390,15 +405,15 @@ No repositório `ChainTracker`, o serviço é construído a partir do diretório
 ```text
 notificationService1/
 ├── src/main/java/com/example/notificationservice/
-│   ├── client/          # IdentityClient, PortfolioClient, AlertClient
+│   ├── client/          # IdentityClient, PortfolioClient, AlertClient, AssetMarketDataClient
 │   ├── config/          # Telegram, Discord, OAuth2 e Security
 │   ├── domain/          # entidades Alert e LinkedUser
-│   ├── dto/             # contratos internos e do bot
+│   ├── dto/             # contratos internos, do bot e de ativos
 │   ├── enums/           # AlertStatus, PositionType, RegistrationStatus
 │   ├── listener/        # TelegramUpdateListener
 │   ├── mapper/          # conversão de alertas
 │   ├── repository/      # repositórios Spring Data
-│   └── service/         # AlertService, IdentityService, PortfolioService, PositionService, TelegramService
+│   └── service/         # AlertService, AssetService, IdentityService, PortfolioService, PositionService, TelegramService
 ├── src/main/resources/
 │   ├── application.yaml
 │   └── db/migration/    # migrações Flyway

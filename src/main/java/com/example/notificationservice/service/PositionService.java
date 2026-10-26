@@ -24,13 +24,12 @@ public class PositionService {
      * Adiciona (ou soma) uma posicao no portfolio.
      * price == null usa o preco de mercado; price informado usa o preco da compra.
      */
-    public void addPosition(String portfolioId, String userId, PositionType type,
-                            String assetId, BigDecimal quantity, BigDecimal price) {
+    public PositionResponseDto addPosition(String portfolioId, String userId, PositionType type,
+                                           String assetId, BigDecimal quantity, BigDecimal price) {
         if (price == null) {
-            portfolioClient.addPositionAtMarketPrice(portfolioId, userId, type, assetId, quantity);
-            return;
+            return portfolioClient.addPositionAtMarketPrice(portfolioId, userId, type, assetId, quantity);
         }
-        portfolioClient.addPositionAtCustomPrice(portfolioId, userId, type, assetId, quantity, price);
+        return portfolioClient.addPositionAtCustomPrice(portfolioId, userId, type, assetId, quantity, price);
     }
 
     /**

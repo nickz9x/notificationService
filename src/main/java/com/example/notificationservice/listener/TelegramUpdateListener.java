@@ -1,14 +1,18 @@
 package com.example.notificationservice.listener;
 
 import com.example.notificationservice.domain.LinkedUser;
+import com.example.notificationservice.dto.AssetSummaryDto;
+import com.example.notificationservice.dto.CryptoMarketDto;
 import com.example.notificationservice.dto.PortfolioResponseDto;
 import com.example.notificationservice.dto.PositionResponseDto;
 import com.example.notificationservice.dto.PositionTotalResume;
+import com.example.notificationservice.dto.StockMarketDto;
 import com.example.notificationservice.dto.TelegramLinkDto;
 import com.example.notificationservice.dto.TelegramRegisterDto;
 import com.example.notificationservice.enums.PositionType;
 import com.example.notificationservice.enums.RegistrationStatus;
 import com.example.notificationservice.service.AlertService;
+import com.example.notificationservice.service.AssetService;
 import com.example.notificationservice.service.IdentityService;
 import com.example.notificationservice.service.PortfolioService;
 import com.example.notificationservice.service.PositionService;
@@ -28,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -42,13 +47,14 @@ public class TelegramUpdateListener {
     private final PortfolioService portfolioService;
     private final PositionService positionService;
     private final AlertService alertService;
+    private final AssetService assetService;
 
     // O bot e stateless entre updates: cada chat guarda aqui o passo da operacao
     // em andamento (tipo, ativo, quantidade, preco) ate ela terminar.
     private final Map<Long, Conversa> conversas = new ConcurrentHashMap<>();
 
     private enum Acao {
-        ADICIONAR, DIMINUIR, REMOVER, CRIAR_PORTFOLIO, CRIAR_ALERTA, CRIAR_CONTA
+        ADICIONAR, DIMINUIR, REMOVER, CRIAR_PORTFOLIO, CRIAR_ALERTA, CRIAR_CONTA, BUSCAR_ATIVO
     }
 
     private enum Etapa {
@@ -65,7 +71,9 @@ public class TelegramUpdateListener {
         ALERTA_INFORMAR_PRECO,
         CONTA_INFORMAR_USERNAME,
         CONTA_INFORMAR_EMAIL,
-        CONTA_INFORMAR_SENHA
+        CONTA_INFORMAR_SENHA,
+        BUSCAR_INFORMAR_TERMO,
+        BUSCAR_SELECIONAR
     }
 
     private static final class Conversa {
@@ -77,6 +85,7 @@ public class TelegramUpdateListener {
         private BigDecimal quantidade;
         private List<PositionResponseDto> posicoes;
         private PositionResponseDto selecionada;
+        private List<AssetSummaryDto> resultados;
         private String username;
         private String email;
 
@@ -125,6 +134,7 @@ public class TelegramUpdateListener {
                     new BotCommand("criarconta", "Cria uma conta pelo Telegram"),
                     new BotCommand("portfolio", "Consulta seus portfolios"),
                     new BotCommand("newportfolio", "Cria um novo portfolio"),
+                    new BotCommand("buscar", "Busca um ativo e mostra os dados"),
                     new BotCommand("alerta", "Cria um alerta de preço"),
                     new BotCommand("cancelar", "Cancela a operação em andamento")
             ));
@@ -141,7 +151,15 @@ public class TelegramUpdateListener {
         bot.execute(new AnswerCallbackQuery(callback.id()));
 
         try {
-            if (callbackData.startsWith("portfolio_id_")) {
+            if (callbackData.startsWith("search_asset_")) {
+                iniciarBuscaAtivo(chatId, callbackData.replace("search_asset_", ""));
+            } else if ("search_again".equals(callbackData)) {
+                Conversa atual = conversas.get(chatId);
+                iniciarBuscaAtivo(chatId, atual == null ? null : atual.portfolioId);
+            } else if (callbackData.startsWith("asset_view_")) {
+                mostrarAtivo(chatId, callbackData.replace("asset_view_", ""));
+            } else if (callbackData.startsWith("portfolio_id_")) {
+                conversas.remove(chatId);
                 executarAcaoDoPortfolio(chatId, callbackData.replace("portfolio_id_", ""));
             } else if (callbackData.startsWith("refresh_portfolio_")) {
                 executarAcaoDoPortfolio(chatId, callbackData.replace("refresh_portfolio_", ""));
@@ -212,6 +230,7 @@ public class TelegramUpdateListener {
                             + "/vincular <codigo> - Vincular sua conta\n"
                             + "/portfolio - Consultar portfolios\n"
                             + "/newportfolio - Criar portfolio\n"
+                            + "/buscar - Buscar cripto ou ação\n"
                             + "/alerta - Criar alerta de preço\n"
                             + "/cancelar - Cancelar a operação em andamento");
 
@@ -251,6 +270,8 @@ public class TelegramUpdateListener {
             case "/portfolio", "/portfolios" -> listarPortfolios(chatId);
 
             case "/newportfolio" -> iniciarCriacaoPortfolio(chatId);
+
+            case "/buscar" -> iniciarBuscaAtivo(chatId, null);
 
             case "/alerta" -> iniciarCriacaoAlerta(chatId, null);
 
@@ -324,10 +345,10 @@ public class TelegramUpdateListener {
                         .append(portfolioResume.portfolioPnlPercentage())
                         .append("%)\n\n")
                         .append("🏆 *Melhor desempenho:* ")
-                        .append(portfolioResume.bestPerformer())
+                        .append(formatPerformer(portfolioResume.bestPerformer()))
                         .append("\n")
                         .append("📉 *Pior desempenho:* ")
-                        .append(portfolioResume.worstPerformer())
+                        .append(formatPerformer(portfolioResume.worstPerformer()))
                         .append("\n")
                         .append("━━━━━━━━━━━━━━━━━━\n\n");
 
@@ -335,18 +356,21 @@ public class TelegramUpdateListener {
                     // Define o emoji com base no PnL (Lucro/Prejuízo)
                     boolean isProfit = userPosition.pnlAmount() != null && userPosition.pnlAmount().compareTo(BigDecimal.ZERO) >= 0;
                     String pnlEmoji = isProfit ? "🟢" : "🔴";
-                    String pnlSign = isProfit ? "+" : ""; //
+                    String pnlSign = isProfit ? "+" : "";
+                    BigDecimal precoAtual = assetService.getCurrentPrice(inferirTipo(userPosition), userPosition.assetId());
 
                     resposta.append(String.format(
                             "🪙 %s - %s\n" +
                                     " ├ 📦 Qtd: %s\n" +
                                     " ├ 💵 Preço Médio: $ %s\n" +
-                                    " ├ 💰 Valor Atual: $ %s\n" +
+                                    " ├ 💲 Preço Atual: %s\n" +
+                                    " ├ 💰 Valor da Posição: $ %s\n" +
                                     " └ %s PnL: $%s%s (%s%s%%)\n\n",
                             userPosition.symbol(),
                             userPosition.name(),
                             userPosition.quantity(),
                             userPosition.averagePrice(),
+                            formatMoney(precoAtual),
                             userPosition.positionValue(),
                             pnlEmoji,
                             pnlSign, userPosition.pnlAmount(),
@@ -373,11 +397,234 @@ public class TelegramUpdateListener {
                         new InlineKeyboardButton("🔄 Atualizar").callbackData("refresh_portfolio_" + portfolioId)
                 },
                 new InlineKeyboardButton[]{
-                        new InlineKeyboardButton("🔔 Criar alerta").callbackData("create_alert_" + portfolioId)
+                        new InlineKeyboardButton("🔔 Criar alerta").callbackData("create_alert_" + portfolioId),
+                        new InlineKeyboardButton("🔎 Buscar ativo").callbackData("search_asset_" + portfolioId)
                 },
                 new InlineKeyboardButton[]{
                         new InlineKeyboardButton("🗑️ Excluir portfólio").callbackData("delete_portfolio_" + portfolioId)
                 });
+    }
+
+    private void iniciarBuscaAtivo(Long chatId, String portfolioId) {
+        conversas.put(chatId, new Conversa(portfolioId, Acao.BUSCAR_ATIVO, Etapa.BUSCAR_INFORMAR_TERMO));
+
+        InlineKeyboardMarkup teclado = new InlineKeyboardMarkup();
+        if (portfolioId != null) {
+            teclado.addRow(new InlineKeyboardButton("⬅️ Voltar ao portfólio")
+                    .callbackData("portfolio_id_" + portfolioId));
+        }
+
+        sendWithKeyboard(chatId, "🔎 *Buscar ativo*\n\n"
+                + "Envie o nome, o símbolo ou o id do ativo.\n"
+                + "Exemplos: `bitcoin`, `BTC`, `AAPL`, `apple`.", teclado);
+    }
+
+    private void tratarTermoBusca(Long chatId, Conversa conversa, String text) {
+        String termo = text.trim();
+
+        if (termo.length() < 2) {
+            send(chatId, "⚠️ Envie pelo menos 2 caracteres para buscar.");
+            return;
+        }
+
+        try {
+            List<AssetSummaryDto> resultados = assetService.search(termo);
+
+            if (resultados == null || resultados.isEmpty()) {
+                InlineKeyboardMarkup teclado = tecladoDaBusca(conversa);
+                sendWithKeyboard(chatId, "🔎 Nenhum ativo encontrado para *" + escapeMarkdown(termo) + "*.", teclado);
+                return;
+            }
+
+            conversa.resultados = resultados;
+            conversa.etapa = Etapa.BUSCAR_SELECIONAR;
+
+            StringBuilder resposta = new StringBuilder();
+            resposta.append("🔎 *Resultados para \"").append(escapeMarkdown(termo)).append("\"*\n\n");
+
+            InlineKeyboardMarkup teclado = new InlineKeyboardMarkup();
+            for (int i = 0; i < resultados.size(); i++) {
+                AssetSummaryDto ativo = resultados.get(i);
+                String symbol = ativo.symbol() == null ? ativo.assetId() : ativo.symbol();
+                String nome = ativo.name() == null ? "" : " - " + ativo.name();
+
+                resposta.append(i + 1).append(". ").append(iconeDoTipo(ativo.type())).append(" *")
+                        .append(escapeMarkdown(symbol)).append("*").append(escapeMarkdown(nome)).append("\n");
+
+                teclado.addRow(new InlineKeyboardButton(
+                        truncar(iconeDoTipo(ativo.type()) + " " + symbol + nome, 55))
+                        .callbackData("asset_view_" + i));
+            }
+
+            resposta.append("\n👇 _Escolha um ativo para ver todos os dados._");
+            sendWithKeyboard(chatId, resposta.toString(), teclado);
+        } catch (Exception e) {
+            System.out.println("Erro ao buscar ativos pelo bot: " + e.getMessage());
+            send(chatId, "❌ Não foi possível buscar os ativos agora. Tente novamente.");
+        }
+    }
+
+    private void mostrarAtivo(Long chatId, String indexText) {
+        Conversa conversa = conversas.get(chatId);
+        int index;
+
+        try {
+            index = Integer.parseInt(indexText);
+        } catch (NumberFormatException e) {
+            index = -1;
+        }
+
+        if (conversa == null || conversa.resultados == null
+                || index < 0 || index >= conversa.resultados.size()) {
+            send(chatId, "⚠️ Sessão expirada. Use /buscar para pesquisar novamente.");
+            return;
+        }
+
+        AssetSummaryDto ativo = conversa.resultados.get(index);
+        boolean cripto = "CRIPTO".equalsIgnoreCase(ativo.type());
+        String symbol = ativo.symbol() == null ? ativo.assetId() : ativo.symbol();
+
+        StringBuilder resposta = new StringBuilder();
+        resposta.append(iconeDoTipo(ativo.type())).append(" *").append(escapeMarkdown(symbol)).append("*");
+        if (ativo.name() != null && !ativo.name().isBlank()) {
+            resposta.append(" - ").append(escapeMarkdown(ativo.name()));
+        }
+        resposta.append("\n\n")
+                .append("├ 🏷️ Tipo: ").append(tipoLabel(ativo.type())).append("\n")
+                .append("├ 🆔 ID: ").append(ativo.assetId() == null ? "—" : escapeMarkdown(ativo.assetId())).append("\n")
+                .append("├ 🔤 Símbolo: ").append(escapeMarkdown(symbol)).append("\n");
+
+        if (ativo.exchange() != null && !ativo.exchange().isBlank()) {
+            resposta.append("├ 🏛️ Bolsa: ").append(escapeMarkdown(ativo.exchange())).append("\n");
+        }
+
+        resposta.append("├ 📊 Status: ").append(statusLabel(ativo.status())).append("\n");
+
+        try {
+            if (cripto) {
+                appendCryptoData(resposta, assetService.getCryptoDetails(ativo.assetId()));
+            } else {
+                appendStockData(resposta, assetService.getStockDetails(symbol));
+            }
+        } catch (Exception e) {
+            resposta.append("└ ⚠️ Dados de mercado indisponíveis no momento.");
+        }
+
+        sendWithKeyboard(chatId, resposta.toString(), tecladoDoAtivo(conversa));
+    }
+
+    private void appendCryptoData(StringBuilder resposta, CryptoMarketDto dados) {
+        if (dados == null) {
+            resposta.append("└ ⚠️ Dados de mercado indisponíveis no momento.");
+            return;
+        }
+
+        resposta.append("├ 💲 Preço Atual: ").append(formatMoney(dados.currentPrice())).append("\n")
+                .append("├ 🏦 Market Cap: ").append(formatMoney(dados.marketCap())).append("\n")
+                .append("├ 🏅 Ranking: ")
+                .append(dados.marketCapRank() == null ? "—" : "#" + dados.marketCapRank()).append("\n")
+                .append("├ 📈 Variação 24h: ").append(formatPercent(dados.priceChangePercentage24h())).append("\n")
+                .append("└ 🕒 Atualizado: ")
+                .append(dados.lastUpdated() == null ? "—" : escapeMarkdown(dados.lastUpdated()));
+    }
+
+    private void appendStockData(StringBuilder resposta, StockMarketDto dados) {
+        if (dados == null) {
+            resposta.append("└ ⚠️ Dados de mercado indisponíveis no momento.");
+            return;
+        }
+
+        resposta.append("├ 💲 Preço Atual: ").append(formatMoney(dados.currentPrice())).append("\n")
+                .append("├ 🔓 Abertura: ").append(formatMoney(dados.openingPrice())).append("\n")
+                .append("├ ⬆️ Máxima: ").append(formatMoney(dados.highestPrice())).append("\n")
+                .append("└ ⬇️ Mínima: ").append(formatMoney(dados.lowestPrice()));
+    }
+
+    private InlineKeyboardMarkup tecladoDaBusca(Conversa conversa) {
+        InlineKeyboardMarkup teclado = new InlineKeyboardMarkup()
+                .addRow(new InlineKeyboardButton("🔄 Nova busca").callbackData("search_again"));
+
+        if (conversa.portfolioId != null) {
+            teclado.addRow(new InlineKeyboardButton("⬅️ Voltar ao portfólio")
+                    .callbackData("portfolio_id_" + conversa.portfolioId));
+        }
+
+        return teclado;
+    }
+
+    private InlineKeyboardMarkup tecladoDoAtivo(Conversa conversa) {
+        return tecladoDaBusca(conversa);
+    }
+
+    private String iconeDoTipo(String type) {
+        return "CRIPTO".equalsIgnoreCase(type) ? "🪙" : "📈";
+    }
+
+    private String tipoLabel(String type) {
+        if (type == null) return "—";
+        if ("CRIPTO".equalsIgnoreCase(type)) return "Cripto";
+        if ("TRADFI".equalsIgnoreCase(type)) return "TradFi";
+        return type;
+    }
+
+    private String statusLabel(String status) {
+        if (status == null) return "—";
+        if ("active".equalsIgnoreCase(status) || "true".equalsIgnoreCase(status)) return "🟢 Ativo";
+        if ("inactive".equalsIgnoreCase(status) || "false".equalsIgnoreCase(status)) return "🔴 Inativo";
+        return status;
+    }
+
+    private String formatMoney(BigDecimal valor) {
+        return valor == null ? "—" : "$ " + formatPrice(valor);
+    }
+
+    private String formatPrice(BigDecimal valor) {
+        if (valor == null) return "—";
+
+        if (valor.abs().compareTo(BigDecimal.ONE) >= 0) {
+            return valor.setScale(2, RoundingMode.HALF_UP).toPlainString();
+        }
+
+        return valor.setScale(8, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+    }
+
+    private String formatPercent(Double valor) {
+        if (valor == null) return "—";
+
+        BigDecimal numero = BigDecimal.valueOf(valor).setScale(2, RoundingMode.HALF_UP);
+        String sinal = numero.signum() > 0 ? "+" : "";
+        return sinal + numero.toPlainString() + "%";
+    }
+
+    private String formatPerformer(String performer) {
+        if (performer == null || performer.isBlank()) return "—";
+
+        int abre = performer.lastIndexOf('(');
+        int fecha = performer.lastIndexOf(')');
+
+        if (abre >= 0 && fecha > abre) {
+            return performer.substring(0, abre + 1)
+                    + performer.substring(abre + 1, fecha).toUpperCase()
+                    + performer.substring(fecha);
+        }
+
+        return performer;
+    }
+
+    private String escapeMarkdown(String texto) {
+        if (texto == null) return "";
+
+        return texto.replace("\\", "\\\\")
+                .replace("_", "\\_")
+                .replace("*", "\\*")
+                .replace("[", "\\[")
+                .replace("]", "\\]")
+                .replace("`", "\\`");
+    }
+
+    private String truncar(String texto, int limite) {
+        if (texto == null) return "";
+        return texto.length() <= limite ? texto : texto.substring(0, limite - 1) + "…";
     }
 
     // ------------------------------------------------------------------
@@ -499,7 +746,7 @@ public class TelegramUpdateListener {
             alertService.createAlert(usuario.getUserId().toString(), conversa.tipo, conversa.assetId, preco);
 
             conversas.remove(chatId);
-            send(chatId, "✅ Alerta criado para *" + conversa.assetId + "* em `$"
+            send(chatId, "✅ Alerta criado para *" + escapeMarkdown(conversa.assetId.toUpperCase()) + "* em `$"
                     + preco.stripTrailingZeros().toPlainString() + "`.\n\n"
                     + "Você será avisado aqui quando o preço for atingido. 🔔");
 
@@ -744,6 +991,7 @@ public class TelegramUpdateListener {
             case INFORMAR_NOME_PORTFOLIO -> criarPortfolio(chatId, text);
             case ALERTA_INFORMAR_ATIVO -> tratarAtivoAlerta(chatId, conversa, text);
             case ALERTA_INFORMAR_PRECO -> tratarPrecoAlerta(chatId, conversa, text);
+            case BUSCAR_INFORMAR_TERMO, BUSCAR_SELECIONAR -> tratarTermoBusca(chatId, conversa, text);
             case CONTA_INFORMAR_USERNAME -> tratarUsernameConta(chatId, conversa, text);
             case CONTA_INFORMAR_EMAIL -> tratarEmailConta(chatId, conversa, text);
             case CONTA_INFORMAR_SENHA -> tratarSenhaConta(chatId, conversa, text);
@@ -849,10 +1097,13 @@ public class TelegramUpdateListener {
             String userId = usuario.getUserId().toString();
 
             if (conversa.acao == Acao.ADICIONAR) {
-                positionService.addPosition(conversa.portfolioId, userId, conversa.tipo,
-                        conversa.assetId, conversa.quantidade, preco);
+                PositionResponseDto adicionada = positionService.addPosition(conversa.portfolioId, userId,
+                        conversa.tipo, conversa.assetId, conversa.quantidade, preco);
+                String simbolo = adicionada != null && adicionada.symbol() != null
+                        ? adicionada.symbol()
+                        : conversa.assetId.toUpperCase();
 
-                send(chatId, "✅ Posição de *" + conversa.assetId + "* adicionada.");
+                send(chatId, "✅ Posição de *" + escapeMarkdown(simbolo) + "* adicionada.");
             } else {
                 PositionResponseDto posicao = conversa.selecionada;
 

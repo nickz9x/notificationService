@@ -62,31 +62,31 @@ public class PortfolioClient {
     /**
      * Cria/soma posicao usando o preco de mercado do assetMarketDataService.
      */
-    public void addPositionAtMarketPrice(String portfolioId, String userId, PositionType type,
-                                         String assetId, BigDecimal quantity) {
-        restClient.post()
+    public PositionResponseDto addPositionAtMarketPrice(String portfolioId, String userId, PositionType type,
+                                                         String assetId, BigDecimal quantity) {
+        return restClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .path("/bot/portfolio/{portfolioId}/positions/{tipo}/market")
                         .queryParam("userId", "{userId}")
                         .build(Map.of("portfolioId", portfolioId, "userId", userId, "tipo", tipoDo(type))))
                 .body(new PositionRequestDto(assetId, quantity))
                 .retrieve()
-                .toBodilessEntity();
+                .body(PositionResponseDto.class);
     }
 
     /**
      * Cria/soma posicao usando o preco informado pelo usuario.
      */
-    public void addPositionAtCustomPrice(String portfolioId, String userId, PositionType type,
-                                         String assetId, BigDecimal quantity, BigDecimal price) {
-        restClient.post()
+    public PositionResponseDto addPositionAtCustomPrice(String portfolioId, String userId, PositionType type,
+                                                         String assetId, BigDecimal quantity, BigDecimal price) {
+        return restClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .path("/bot/portfolio/{portfolioId}/positions/{tipo}")
                         .queryParam("userId", "{userId}")
                         .build(Map.of("portfolioId", portfolioId, "userId", userId, "tipo", tipoDo(type))))
                 .body(new PositionAnotherPriceDto(assetId, quantity, price))
                 .retrieve()
-                .toBodilessEntity();
+                .body(PositionResponseDto.class);
     }
 
     /**
